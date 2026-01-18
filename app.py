@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 """
-FastAPI DOCX Generation Service - Lightweight version for Render
+FastAPI DOCX Generation Service - Fixed for Pydantic v2
 """
 
 import os
 import io
-import json
 from datetime import datetime
 from typing import Optional
 from zipfile import ZipFile
+
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import Response, JSONResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict
 import uvicorn
 
 # ============================================================================
@@ -20,9 +20,12 @@ import uvicorn
 # ============================================================================
 PORT = int(os.environ.get("PORT", 8001))
 HOST = os.environ.get("HOST", "0.0.0.0")
-ENVIRONMENT = os.environ.get("ENVIRONMENT", "production")
 
-app = FastAPI(title="DOCX Generator", version="1.0.0")
+app = FastAPI(
+    title="DOCX Generator API",
+    description="Generate DOCX files from JSON data",
+    version="2.0.0"
+)
 
 # CORS
 app.add_middleware(
@@ -34,36 +37,38 @@ app.add_middleware(
 )
 
 # ============================================================================
-# DATA MODELS
+# DATA MODELS (Pydantic v2 compatible)
 # ============================================================================
 class DocxRequest(BaseModel):
-    title: str = "PPAP REPORT"
-    customer: str = ""
+    title: str = "DOCUMENT"
     content: str = ""
-    filename: str = "report.docx"
+    filename: str = "document.docx"
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "title": "My Report",
+                "content": "This is the content of the report.",
+                "filename": "report.docx"
+            }
+        }
+    )
 
 # ============================================================================
-# DOCX GENERATION (Simple version)
+# DOCX GENERATION
 # ============================================================================
-def create_simple_docx_bytes(title: str, content: str) -> bytes:
-    """
-    Tạo DOCX đơn giản từ template XML
-    Đây là fallback khi python-docx không hoạt động
-    """
-    # Template DOCX cơ bản (minimal working DOCX)
-    docx_structure = {
-        "[Content_Types].xml": """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
-    <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
-    <Default Extension="xml" ContentType="application/xml"/>
-    <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
-</Types>""",
-        
-        "word/document.xml": f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+def create_docx_content(title: str, content: str) -> bytes:
+    """Tạo DOCX đơn giản bằng XML"""
+    
+    xml_content = f'''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
     <w:body>
         <w:p>
             <w:r>
+                <w:rPr>
+                    <w:b/>
+                    <w:sz w:val="32"/>
+                </w:rPr>
                 <w:t>{title}</w:t>
             </w:r>
         </w:p>
@@ -72,20 +77,37 @@ def create_simple_docx_bytes(title: str, content: str) -> bytes:
                 <w:t>{content}</w:t>
             </w:r>
         </w:p>
+        <w:p>
+            <w:r>
+                <w:t>Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</w:t>
+            </w:r>
+        </w:p>
     </w:body>
-</w:document>""",
-        
-        "_rels/.rels": """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-    <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
-</Relationships>"""
-    }
+</w:document>'''
     
-    # Tạo ZIP file (DOCX là ZIP file)
     buffer = io.BytesIO()
     with ZipFile(buffer, 'w') as zip_file:
-        for filename, content in docx_structure.items():
-            zip_file.writestr(filename, content)
+        # [Content_Types].xml
+        zip_file.writestr('[Content_Types].xml', '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+    <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+    <Default Extension="xml" ContentType="application/xml"/>
+    <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+</Types>''')
+        
+        # word/document.xml
+        zip_file.writestr('word/document.xml', xml_content)
+        
+        # _rels/.rels
+        zip_file.writestr('_rels/.rels', '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+    <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>''')
+        
+        # word/_rels/document.xml.rels
+        zip_file.writestr('word/_rels/document.xml.rels', '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+</Relationships>''')
     
     buffer.seek(0)
     return buffer.getvalue()
@@ -95,34 +117,72 @@ def create_simple_docx_bytes(title: str, content: str) -> bytes:
 # ============================================================================
 @app.get("/")
 async def root():
-    return {"status": "ok", "service": "DOCX Generator"}
+    return HTMLResponse("""
+    <html>
+        <head><title>DOCX Generator</title></head>
+        <body>
+            <h1>DOCX Generator API</h1>
+            <p>POST /generate-docx to generate DOCX files</p>
+            <p><a href="/docs">API Docs</a> | <a href="/health">Health</a></p>
+        </body>
+    </html>
+    """)
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+    return {
+        "status": "healthy",
+        "service": "DOCX Generator",
+        "timestamp": datetime.now().isoformat(),
+        "port": PORT
+    }
 
 @app.post("/generate-docx")
-async def generate_docx(req: DocxRequest):
+async def generate_docx(request: DocxRequest):
+    """Generate DOCX file"""
     try:
-        # Tạo nội dung
-        full_content = f"Customer: {req.customer}\n\n{req.content}"
+        docx_bytes = create_docx_content(request.title, request.content)
         
-        # Tạo DOCX bytes
-        docx_bytes = create_simple_docx_bytes(req.title, full_content)
-        
-        # Trả về file
         return Response(
             content=docx_bytes,
             media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            headers={"Content-Disposition": f'attachment; filename="{req.filename}"'}
+            headers={
+                "Content-Disposition": f'attachment; filename="{request.filename}"',
+                "Access-Control-Expose-Headers": "Content-Disposition"
+            }
         )
-        
+    
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate DOCX: {str(e)}"
+        )
 
 # ============================================================================
-# MAIN
+# STARTUP
 # ============================================================================
+def check_port(port: int):
+    """Kiểm tra port có khả dụng không"""
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            s.bind(('0.0.0.0', port))
+            return True
+        except socket.error:
+            return False
+
 if __name__ == "__main__":
-    print(f"Starting server on {HOST}:{PORT}")
-    uvicorn.run(app, host=HOST, port=PORT)
+    # Kiểm tra port
+    if not check_port(PORT):
+        print(f"⚠️  Port {PORT} is in use! Trying port 8002...")
+        PORT = 8002
+    
+    print(f"🚀 Starting DOCX Generator on {HOST}:{PORT}")
+    print(f"📚 API Docs: http://{HOST}:{PORT}/docs")
+    
+    uvicorn.run(
+        app,
+        host=HOST,
+        port=PORT,
+        log_level="info"
+    )
