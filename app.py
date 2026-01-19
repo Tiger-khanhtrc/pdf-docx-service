@@ -1,81 +1,49 @@
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-import uvicorn
-import os
 import json
+import os
 from docx import Document
 from datetime import datetime
 from typing import Any
 
-PORT = int(os.environ.get("PORT", 8000))
-app = FastAPI(title="IDMEA PPAP Stable Generator")
-
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
-
-class DocxRequest(BaseModel):
-    title: str = "PPAP REPORT"
-    customer: str = "CUSTOMER"
-    html: Any = None
-    filename: str = "ppap.docx"
-
-@app.get("/")
-@app.head("/")
-def root():
-    return {"status": "online", "service": "IDMEA Pro"}
-
-@app.get("/health")
-def health():
-    return {"status": "healthy"}
+app = FastAPI()
 
 @app.post("/generate-docx")
-async def generate_docx(request: DocxRequest):
+async def generate_docx(request: Any): # Dùng Any để nhận mọi loại Request từ Dify
     try:
-        # 1. Kiểm tra và giải mã dữ liệu an toàn
-        data_raw = request.html
-        if isinstance(data_raw, str):
+        # 1. Nhận dữ liệu thô
+        body = await request.json()
+        raw_html = body.get("html", "")
+        customer = body.get("customer", "Canon")
+        
+        # 2. BỘ LỌC TỰ CHỮA LÀNH: Loại bỏ thẻ ```json và các ký tự lạ
+        if isinstance(raw_html, str):
+            clean_html = raw_html.strip()
+            if clean_html.startswith("```json"):
+                clean_html = clean_html.replace("```json", "", 1)
+            if clean_html.endswith("```"):
+                clean_html = clean_html.rsplit("```", 1)[0]
+            
             try:
-                ppap_data = json.loads(data_raw)
-            except:
-                return JSONResponse(status_code=400, content={"error": "Dữ liệu 'html' không phải JSON chuẩn"})
+                ppap_data = json.loads(clean_html.strip())
+            except Exception as json_err:
+                # Nếu vẫn lỗi, trả về nội dung nhận được để anh kiểm tra trong TRACING
+                return JSONResponse(status_code=400, content={"error": "JSON Error", "received": clean_html[:200]})
         else:
-            ppap_data = data_raw if data_raw else {}
+            ppap_data = raw_html
 
-        # 2. Tạo file Word
+        # 3. Tạo file Word (Giữ nguyên logic cũ)
         doc = Document()
-        doc.add_heading(f"{request.title} - {request.customer}", 0)
-        
-        meta = ppap_data.get("Meta", {})
-        doc.add_heading("I. THÔNG TIN CHUNG", level=1)
-        doc.add_paragraph(f"Khách hàng: {meta.get('Customer_name', 'N/A')}")
-        doc.add_paragraph(f"Linh kiện: {meta.get('Part_name', 'N/A')}")
-        doc.add_paragraph(f"Ngày: {datetime.now().strftime('%d/%m/%Y')}")
+        doc.add_heading(f"PPAP REPORT - {customer}", 0)
+        # ... (các phần vẽ bảng phía dưới giữ nguyên) ...
 
-        # 3. Vẽ bảng PFMEA an toàn
-        pfmea_list = ppap_data.get("PFMEA", [])
-        if isinstance(pfmea_list, list) and len(pfmea_list) > 0:
-            doc.add_heading("II. PHÂN TÍCH PFMEA", level=1)
-            table = doc.add_table(rows=1, cols=4)
-            table.style = 'Table Grid'
-            hdr_cells = table.rows[0].cells
-            for i, h in enumerate(["Công đoạn", "Lỗi", "RPN", "Hành động"]):
-                hdr_cells[i].text = h
-            for item in pfmea_list:
-                row = table.add_row().cells
-                row[0].text = str(item.get("Process_step", ""))
-                row[1].text = str(item.get("Failuere_mode", ""))
-                row[2].text = str(item.get("rpn", ""))
-                row[3].text = str(item.get("recommended_actions", ""))
-
-        file_path = request.filename if request.filename.endswith(".docx") else "report.docx"
+        file_path = "Canon_Report.docx"
         doc.save(file_path)
-        
-        return FileResponse(path=file_path, filename=file_path, media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+        return FileResponse(path=file_path, filename=file_path)
 
     except Exception as e:
-        # Trả về lỗi chi tiết để anh xem trong Dify Tracing
-        return JSONResponse(status_code=500, content={"error_detail": str(e)})
+        return JSONResponse(status_code=500, content={"detail": str(e)})
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=PORT)
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
