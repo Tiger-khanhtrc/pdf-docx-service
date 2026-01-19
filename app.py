@@ -39,6 +39,13 @@ def add_table_data(doc, title, headers, data_list, keys):
         for i, key in enumerate(keys):
             row_cells[i].text = str(item.get(key, ""))
 
+@app.get("/")
+def root():
+    return {"message": "IDMEA PPAP Generator API is running"}
+
+@app.get("/health")
+def health():
+    return {"status": "healthy"}
 @app.post("/generate-docx")
 async def generate_docx(request: DocxRequest):
     try:
