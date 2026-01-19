@@ -6,6 +6,65 @@ import uvicorn
 import os
 import json
 from docx import Document
+from datetime import datetime
+
+PORT = int(os.environ.get("PORT", 8000))
+app = FastAPI(title="IDMEA PPAP Generator Pro")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+class DocxRequest(BaseModel):
+    title: str = "PPAP REPORT"
+    customer: str = "TTI"
+    html: str = ""
+
+# --- PHẦN QUAN TRỌNG ĐỂ HẾT LỖI 404 ---
+@app.get("/")
+def root():
+    return {"status": "online", "service": "IDMEA Pro"}
+
+@app.get("/health")
+def health():
+    return {"status": "healthy"}
+# ---------------------------------------
+
+@app.post("/generate-docx")
+async def generate_docx(request: DocxRequest):
+    try:
+        doc = Document()
+        doc.add_heading(f"{request.title} - {request.customer}", 0)
+        
+        # Xử lý dữ liệu JSON khổng lồ từ Dify
+        ppap_data = json.loads(request.html)
+        doc.add_paragraph(f"Báo cáo tạo lúc: {datetime.now().strftime('%H:%M:%S')}")
+        
+        # (Anh có thể thêm logic vẽ bảng ở đây như bản trước em gửi)
+        doc.add_paragraph(str(ppap_data)[:5000]) # Ghi tạm dữ liệu
+
+        file_path = "Bao_cao_PPAP_IDMEA.docx"
+        doc.save(file_path)
+        
+        return FileResponse(path=file_path, filename=file_path, media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=PORT)
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+import uvicorn
+import os
+import json
+from docx import Document
 from docx.shared import Inches, Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from datetime import datetime
