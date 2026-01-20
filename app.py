@@ -134,6 +134,9 @@ async def generate_docx(request: ReportRequest):
     doc.add_paragraph("\n")
 
     # 5. BẢNG CONTROL PLAN (Mới thêm)
+    # ... (Phần trên giữ nguyên)
+
+    # 5. BẢNG CONTROL PLAN (Cập nhật mới nhất)
     doc.add_heading('III. KẾ HOẠCH KIỂM SOÁT (CONTROL PLAN)', level=1)
     cp_data = request.html.get('Control_plan', [])
     
@@ -145,17 +148,44 @@ async def generate_docx(request: ReportRequest):
         hdr_cp = table_cp.rows[0].cells
         for i, text in enumerate(headers_cp):
             hdr_cp[i].text = text
-            set_cell_background(hdr_cp[i], "CFE2F3") # Màu xanh dương nhạt
+            set_cell_background(hdr_cp[i], "CFE2F3") 
             hdr_cp[i].paragraphs[0].runs[0].bold = True
             
         for item in cp_data:
             row = table_cp.add_row().cells
-            # Smart Key Search cho Control Plan
-            row[0].text = get_smart_value(item, ['product_characteristic', 'Product_Characteristic'])
-            row[1].text = get_smart_value(item, ['spec', 'Spec', 'specification'])
-            row[2].text = get_smart_value(item, ['measurement_method', 'Measurement_Method'])
-            row[3].text = get_smart_value(item, ['sample_size_freq', 'Frequency'])
-            row[4].text = get_smart_value(item, ['reaction_plan', 'Reaction_Plan'])
+            
+            # CẬP NHẬT: Thêm nhiều từ khóa dự phòng để bắt dữ liệu
+            # 1. Đặc tính
+            row[0].text = get_smart_value(item, [
+                'product_characteristic', 'Product_Characteristic', 'characteristic', 'Characteristic', 
+                'feature', 'Feature', 'description'
+            ])
+            
+            # 2. Thông số (Spec)
+            row[1].text = get_smart_value(item, [
+                'spec', 'Spec', 'specification', 'Specification', 
+                'tolerance', 'Tolerance', 'standard'
+            ])
+            
+            # 3. Phương pháp đo
+            row[2].text = get_smart_value(item, [
+                'measurement_method', 'Measurement_Method', 'method', 'Method', 
+                'evaluation_measurement_technique', 'technique'
+            ])
+            
+            # 4. Tần suất
+            row[3].text = get_smart_value(item, [
+                'sample_size_freq', 'Sample_Size_Freq', 'frequency', 'Frequency', 
+                'sample_size', 'Sample_Size'
+            ])
+            
+            # 5. Phản ứng
+            row[4].text = get_smart_value(item, [
+                'reaction_plan', 'Reaction_Plan', 'reaction', 'Reaction', 
+                'action', 'Action'
+            ])
+
+    # ... (Phần save file giữ nguyên)
 
     # Stream file về
     file_stream = io.BytesIO()
