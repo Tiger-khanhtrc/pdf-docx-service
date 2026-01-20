@@ -126,4 +126,7 @@ async def generate_docx(request: ReportRequest):
     cp_data = request.html.get('Control_plan', [])
     
     if cp_data:
-        headers_cp = ["Đặc tính", "Thông số (Spec)", "Phương pháp đo", "Tần suất
+        # DÒNG NÀY LÀ DÒNG BỊ LỖI LÚC NÃY - ĐÃ SỬA LẠI
+        headers_cp = ["Đặc tính", "Thông số (Spec)", "Phương pháp đo", "Tần suất", "Phản ứng"]
+        table_cp = doc.add_table(rows=1, cols=len(headers_cp))
+        table_cp.style = '
