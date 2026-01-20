@@ -16,9 +16,10 @@ class ReportRequest(BaseModel):
     html: dict  # Dữ liệu JSON từ Dify
     filename: str = "PPAP_Report.docx"
 
-# Hàm thông minh: Tự động tìm dữ liệu dù key viết hoa hay thường
+# --- HÀM THÔNG MINH: Bắt dính dữ liệu dù AI trả về key nào ---
 def get_smart_value(item, keys_list, default=""):
     for key in keys_list:
+        # Kiểm tra key tồn tại và giá trị không rỗng
         if key in item and item[key]:
             return str(item[key])
     return default
@@ -35,7 +36,7 @@ def set_cell_background(cell, color_hex):
 async def generate_docx(request: ReportRequest):
     doc = Document()
     
-    # 1. HEADER CHUYÊN NGHIỆP
+    # 1. HEADER CHUYÊN NGHIỆP IDMEA
     header = doc.sections[0].header
     htable = header.add_table(rows=1, cols=2, width=Inches(6))
     htable.autofit = False
@@ -47,7 +48,7 @@ async def generate_docx(request: ReportRequest):
     run = cell_left.paragraphs[0].add_run("IDMEA TECHNOLOGY")
     run.bold = True
     run.font.size = Pt(16)
-    run.font.color.rgb = RGBColor(0, 51, 102) # Màu xanh đậm IDMEA
+    run.font.color.rgb = RGBColor(0, 51, 102) # Xanh IDMEA
     
     # Tên báo cáo bên phải
     cell_right = htable.cell(0, 1)
@@ -68,10 +69,10 @@ async def generate_docx(request: ReportRequest):
     table_meta = doc.add_table(rows=3, cols=2)
     table_meta.style = 'Table Grid'
     
-    # Dùng hàm thông minh để bắt mọi trường hợp key
-    part_name = get_smart_value(meta, ['Part_name', 'part_name', 'Ten_linh_kien'], "N/A")
-    part_number = get_smart_value(meta, ['Part_number', 'part_number', 'Ma_hang'], "Reviewing...")
-    rev = get_smart_value(meta, ['Revise', 'drawing_rev', 'Rev'], "01")
+    # Smart Search cho Meta
+    part_name = get_smart_value(meta, ['Part_name', 'part_name', 'Ten_linh_kien', 'Part Name'], "N/A")
+    part_number = get_smart_value(meta, ['Part_number', 'part_number', 'Ma_hang', 'Part Number'], "Reviewing...")
+    rev = get_smart_value(meta, ['Revise', 'drawing_rev', 'Rev', 'Revision'], "01")
     
     rows = table_meta.rows
     rows[0].cells[0].text = "Tên linh kiện:"
@@ -88,27 +89,27 @@ async def generate_docx(request: ReportRequest):
     pfmea_data = request.html.get('PFMEA', [])
     
     if pfmea_data:
-        # Tạo bảng 8 cột chuẩn IATF
         headers = ["Công đoạn", "Lỗi tiềm ẩn", "Nguyên nhân", "S", "O", "D", "RPN", "Hành động"]
         table = doc.add_table(rows=1, cols=len(headers))
         table.style = 'Table Grid'
         
-        # Tô màu header bảng
+        # Header Style
         hdr_cells = table.rows[0].cells
         for i, text in enumerate(headers):
             hdr_cells[i].text = text
-            set_cell_background(hdr_cells[i], "D9EAD3") # Màu xanh nhạt
+            set_cell_background(hdr_cells[i], "D9EAD3")
             hdr_cells[i].paragraphs[0].runs[0].bold = True
 
         for item in pfmea_data:
             row_cells = table.add_row().cells
             
-            # Smart Key Search cho từng cột
-            row_cells[0].text = get_smart_value(item, ['Process_step', 'process_step', 'process_step_id'])
-            row_cells[1].text = get_smart_value(item, ['Failuere_mode', 'failure_mode', 'Failure_Mode']) # Sửa lỗi trống cột
-            row_cells[2].text = get_smart_value(item, ['Cause', 'cause'])
+            # Smart Search cho PFMEA
+            row_cells[0].text = get_smart_value(item, ['Process_step', 'process_step', 'process_step_id', 'Op'])
+            # Thêm 'Failure_mode' viết đúng chính tả để đề phòng
+            row_cells[1].text = get_smart_value(item, ['Failuere_mode', 'failure_mode', 'Failure_Mode', 'Failure Mode']) 
+            row_cells[2].text = get_smart_value(item, ['Cause', 'cause', 'Root_Cause'])
             
-            # Các chỉ số S, O, D
+            # Chỉ số S-O-D
             s = get_smart_value(item, ['severity', 'Severity', 'S'], "0")
             o = get_smart_value(item, ['occurrence', 'Occurrence', 'O'], "0")
             d = get_smart_value(item, ['detection', 'Detection', 'D'], "0")
@@ -117,7 +118,7 @@ async def generate_docx(request: ReportRequest):
             row_cells[4].text = o
             row_cells[5].text = d
             
-            # RPN và Tô màu cảnh báo
+            # Tính toán RPN
             rpn = get_smart_value(item, ['rpn', 'RPN'])
             if not rpn or rpn == "0":
                 try:
@@ -126,17 +127,14 @@ async def generate_docx(request: ReportRequest):
                     rpn = "0"
             
             row_cells[6].text = rpn
-            if int(rpn) > 100:
-                set_cell_background(row_cells[6], "FFCCCC") # Tô đỏ nếu RPN cao
+            if rpn.isdigit() and int(rpn) > 100:
+                set_cell_background(row_cells[6], "FFCCCC")
 
-            row_cells[7].text = get_smart_value(item, ['recommended_actions', 'recommended_action', 'Action'])
+            row_cells[7].text = get_smart_value(item, ['recommended_actions', 'recommended_action', 'Action', 'Control'])
 
     doc.add_paragraph("\n")
 
-    # 5. BẢNG CONTROL PLAN (Mới thêm)
-    # ... (Phần trên giữ nguyên)
-
-    # 5. BẢNG CONTROL PLAN (Cập nhật mới nhất)
+    # 5. BẢNG CONTROL PLAN (Đã sửa lỗi bảng trắng)
     doc.add_heading('III. KẾ HOẠCH KIỂM SOÁT (CONTROL PLAN)', level=1)
     cp_data = request.html.get('Control_plan', [])
     
@@ -154,38 +152,35 @@ async def generate_docx(request: ReportRequest):
         for item in cp_data:
             row = table_cp.add_row().cells
             
-            # CẬP NHẬT: Thêm nhiều từ khóa dự phòng để bắt dữ liệu
-            # 1. Đặc tính
+            # 1. Đặc tính (Product Characteristic)
             row[0].text = get_smart_value(item, [
                 'product_characteristic', 'Product_Characteristic', 'characteristic', 'Characteristic', 
-                'feature', 'Feature', 'description'
+                'feature', 'Feature', 'description', 'Product Characteristic'
             ])
             
-            # 2. Thông số (Spec)
+            # 2. Thông số (Spec/Tolerance)
             row[1].text = get_smart_value(item, [
                 'spec', 'Spec', 'specification', 'Specification', 
-                'tolerance', 'Tolerance', 'standard'
+                'tolerance', 'Tolerance', 'standard', 'Standard'
             ])
             
-            # 3. Phương pháp đo
+            # 3. Phương pháp đo (Measurement Method)
             row[2].text = get_smart_value(item, [
                 'measurement_method', 'Measurement_Method', 'method', 'Method', 
-                'evaluation_measurement_technique', 'technique'
+                'evaluation_measurement_technique', 'technique', 'Gauge'
             ])
             
-            # 4. Tần suất
+            # 4. Tần suất (Frequency)
             row[3].text = get_smart_value(item, [
                 'sample_size_freq', 'Sample_Size_Freq', 'frequency', 'Frequency', 
-                'sample_size', 'Sample_Size'
+                'sample_size', 'Sample_Size', 'Freq'
             ])
             
-            # 5. Phản ứng
+            # 5. Phản ứng (Reaction Plan)
             row[4].text = get_smart_value(item, [
                 'reaction_plan', 'Reaction_Plan', 'reaction', 'Reaction', 
-                'action', 'Action'
+                'action', 'Action', 'Fallback'
             ])
-
-    # ... (Phần save file giữ nguyên)
 
     # Stream file về
     file_stream = io.BytesIO()
