@@ -126,7 +126,90 @@ async def generate_docx(request: ReportRequest):
     cp_data = request.html.get('Control_plan', [])
     
     if cp_data:
-        # DÒNG NÀY LÀ DÒNG BỊ LỖI LÚC NÃY - ĐÃ SỬA LẠI
         headers_cp = ["Đặc tính", "Thông số (Spec)", "Phương pháp đo", "Tần suất", "Phản ứng"]
         table_cp = doc.add_table(rows=1, cols=len(headers_cp))
-        table_cp.style = '
+        table_cp.style = 'Table Grid'
+        
+        hdr_cp = table_cp.rows[0].cells
+        for i, text in enumerate(headers_cp):
+            hdr_cp[i].text = text
+            set_cell_background(hdr_cp[i], "CFE2F3")
+            hdr_cp[i].paragraphs[0].runs[0].bold = True
+            
+        for item in cp_data:
+            row = table_cp.add_row().cells
+            row[0].text = get_smart_value(item, ['product_characteristic', 'Product_Characteristic', 'feature'])
+            row[1].text = get_smart_value(item, ['spec', 'Spec', 'specification', 'tolerance'])
+            row[2].text = get_smart_value(item, ['measurement_method', 'Measurement_Method', 'method', 'Gauge'])
+            row[3].text = get_smart_value(item, ['sample_size_freq', 'Frequency', 'sample_size'])
+            row[4].text = get_smart_value(item, ['reaction_plan', 'Reaction_Plan', 'action'])
+    doc.add_paragraph("\n")
+
+    # --- 6. SOP / HƯỚNG DẪN THAO TÁC (MỚI) ---
+    doc.add_heading('IV. HƯỚNG DẪN THAO TÁC CHUẨN (SOP)', level=1)
+    
+    sop_list = request.html.get('SOP_Steps', [])
+    if not sop_list and 'SOP' in request.html:
+         sop_list = request.html['SOP'].get('SOP_Steps', [])
+
+    if sop_list:
+        headers_sop = ["STT", "Hành động", "Điểm lưu ý (Key Point)", "An toàn", "Dụng cụ"]
+        table_sop = doc.add_table(rows=1, cols=len(headers_sop))
+        table_sop.style = 'Table Grid'
+        
+        hdr_sop = table_sop.rows[0].cells
+        for i, text in enumerate(headers_sop):
+            hdr_sop[i].text = text
+            set_cell_background(hdr_sop[i], "FFF2CC")
+            hdr_sop[i].paragraphs[0].runs[0].bold = True
+            
+        for item in sop_list:
+            row = table_sop.add_row().cells
+            row[0].text = get_smart_value(item, ['Step_No', 'Step', 'no', 'No'])
+            row[1].text = get_smart_value(item, ['Action', 'action', 'Description'])
+            row[2].text = get_smart_value(item, ['Key_Point', 'key_point', 'Note'])
+            row[3].text = get_smart_value(item, ['Safety', 'safety', 'PPE'])
+            row[4].text = get_smart_value(item, ['Tool', 'tool', 'Equipment'])
+    else:
+        doc.add_paragraph("Không có dữ liệu SOP.")
+    doc.add_paragraph("\n")
+
+    # --- 7. CHECKLIST / BIỂU MẪU KIỂM TRA (MỚI) ---
+    doc.add_heading('V. BIỂU MẪU KIỂM TRA (CHECKSHEET)', level=1)
+    
+    check_list = request.html.get('Checklist_Items', [])
+    if not check_list and 'Checksheet' in request.html:
+        check_list = request.html['Checksheet'].get('Checklist_Items', [])
+
+    if check_list:
+        headers_cl = ["STT", "Hạng mục kiểm tra", "Tiêu chuẩn (Spec)", "Dụng cụ", "Tần suất", "Ghi chép"]
+        table_cl = doc.add_table(rows=1, cols=len(headers_cl))
+        table_cl.style = 'Table Grid'
+        
+        hdr_cl = table_cl.rows[0].cells
+        for i, text in enumerate(headers_cl):
+            hdr_cl[i].text = text
+            set_cell_background(hdr_cl[i], "E6B8AF")
+            hdr_cl[i].paragraphs[0].runs[0].bold = True
+            
+        for item in check_list:
+            row = table_cl.add_row().cells
+            row[0].text = get_smart_value(item, ['No', 'no', 'stt'])
+            row[1].text = get_smart_value(item, ['Inspection_Item', 'item', 'Check_Item'])
+            row[2].text = get_smart_value(item, ['Specification', 'spec', 'Standard'])
+            row[3].text = get_smart_value(item, ['Measuring_Tool', 'tool', 'Gauge'])
+            row[4].text = get_smart_value(item, ['Frequency', 'freq'])
+            row[5].text = get_smart_value(item, ['Recording_Type', 'type', 'Record'])
+    else:
+        doc.add_paragraph("Không có dữ liệu Checksheet.")
+
+    # --- SAVE FILE ---
+    file_stream = io.BytesIO()
+    doc.save(file_stream)
+    file_stream.seek(0)
+    
+    return StreamingResponse(
+        file_stream, 
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f"attachment; filename={request.filename}"}
+    )
