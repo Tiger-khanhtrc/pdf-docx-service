@@ -7,6 +7,7 @@ from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 import io
 from fastapi.responses import StreamingResponse
+from urllib.parse import quote  # <--- THƯ VIỆN MỚI ĐỂ XỬ LÝ TIẾNG VIỆT
 
 app = FastAPI()
 
@@ -208,8 +209,13 @@ async def generate_docx(request: ReportRequest):
     doc.save(file_stream)
     file_stream.seek(0)
     
+    # --- MÃ HÓA TÊN FILE TIẾNG VIỆT ---
+    encoded_filename = quote(request.filename)
+    
     return StreamingResponse(
         file_stream, 
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        headers={"Content-Disposition": f"attachment; filename={request.filename}"}
+        headers={
+            "Content-Disposition": f"attachment; filename*=utf-8''{encoded_filename}"
+        }
     )
